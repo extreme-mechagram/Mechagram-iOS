@@ -26,7 +26,7 @@ jobs:
           PY
           python3 build-system/Make/Make.py --overrideXcodeVersion build \
             --configurationPath=build-system/mechagram-simulator.json \
-            --codesigningInformationPath=build-system/fake-codesigning \
+            --xcodeManagedCodesigning \
             --configuration=debug_sim_arm64 --buildNumber="$GITHUB_RUN_NUMBER"
       - uses: actions/upload-artifact@v4
         with:
