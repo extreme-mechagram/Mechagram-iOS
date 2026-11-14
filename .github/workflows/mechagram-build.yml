@@ -1,0 +1,27 @@
+name: Mechagram iOS build
+on:
+  push:
+    branches: [mechagram]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ipa:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify build prerequisites
+        env:
+          CONFIG: ${{ secrets.MECHAGRAM_IOS_CONFIGURATION }}
+        run: |
+          set -eu
+          required=$(python3 -c 'import json;print(json.load(open("versions.json"))["xcode"])')
+          if ! test -d "/Applications/Xcode_${required}.app"; then
+            echo "::error::This upstream revision requires Xcode $required."
+            ls /Applications | grep Xcode || true
+            exit 1
+          fi
+          if test -z "$CONFIG"; then
+            echo "::error::Configure Mechagram app identifiers and Apple signing for org.tele.ram."
+            exit 1
+          fi
