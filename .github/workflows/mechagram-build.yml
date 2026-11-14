@@ -1,4 +1,4 @@
-name: Mechagram iOS build
+name: Mechagram iOS Simulator
 on:
   push:
     branches: [mechagram]
@@ -6,22 +6,30 @@ on:
 permissions:
   contents: read
 jobs:
-  ipa:
+  simulator:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify build prerequisites
-        env:
-          CONFIG: ${{ secrets.MECHAGRAM_IOS_CONFIGURATION }}
+        with:
+          submodules: recursive
+      - name: Compile simulator preview
         run: |
-          set -eu
-          required=$(python3 -c 'import json;print(json.load(open("versions.json"))["xcode"])')
-          if ! test -d "/Applications/Xcode_${required}.app"; then
-            echo "::error::This upstream revision requires Xcode $required."
-            ls /Applications | grep Xcode || true
-            exit 1
-          fi
-          if test -z "$CONFIG"; then
-            echo "::error::Configure Mechagram app identifiers and Apple signing for org.tele.ram."
-            exit 1
-          fi
+          xcodebuild -version
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("build-system/appstore-configuration.json")
+          config = json.loads(path.read_text())
+          config.update(bundle_id="org.tele.ram", app_specific_url_scheme="mechagram",
+                        is_appstore_build="false", enable_siri=False, enable_icloud=False)
+          Path("build-system/mechagram-simulator.json").write_text(json.dumps(config))
+          PY
+          python3 build-system/Make/Make.py --overrideXcodeVersion build \
+            --configurationPath=build-system/mechagram-simulator.json \
+            --codesigningInformationPath=build-system/fake-codesigning \
+            --configuration=debug_sim_arm64 --buildNumber="$GITHUB_RUN_NUMBER"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mechagram-ios-simulator
+          path: bazel-out/**/Telegram/Telegram.zip
+          if-no-files-found: error
