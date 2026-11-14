@@ -18,7 +18,7 @@ jobs:
           if ! xcrun --sdk iphoneos --show-sdk-version | awk -F. '{exit !($1 > 27 || ($1 == 27 && $2 >= 1))}'; then
             echo 'build --@build_bazel_rules_swift//swift:copt=-DMECHAGRAM_LEGACY_IOS_SDK' >> .bazelrc
           fi
-          echo 'build --//Telegram:disableProvisioningProfiles' >> .bazelrc
+          echo 'build --//Telegram:disableProvisioningProfiles --features=disable_legacy_signing' >> .bazelrc
           python3 - <<'PY'
           import json
           from pathlib import Path
