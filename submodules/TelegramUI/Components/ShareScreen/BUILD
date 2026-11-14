@@ -10,6 +10,8 @@ swift_library(
     ]),
     copts = [
         "-warnings-as-errors",
+        # Work around a Swift optimizer crash in the GitHub runner SDK.
+        "-Onone",
     ],
     deps = [
         "//submodules/AsyncDisplayKit",
