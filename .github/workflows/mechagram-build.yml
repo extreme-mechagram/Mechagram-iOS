@@ -15,6 +15,7 @@ jobs:
       - name: Compile simulator preview
         run: |
           xcodebuild -version
+          echo 'build --//Telegram:disableProvisioningProfiles' >> .bazelrc
           python3 - <<'PY'
           import json
           from pathlib import Path
