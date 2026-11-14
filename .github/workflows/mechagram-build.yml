@@ -47,9 +47,10 @@ jobs:
           python3 build-system/Make/Make.py --overrideXcodeVersion build \
             --configurationPath=build-system/mechagram-device.json \
             --xcodeManagedCodesigning \
-            --configuration=release_arm64 --buildNumber="$GITHUB_RUN_NUMBER"
+            --configuration=debug_arm64 --buildNumber="$GITHUB_RUN_NUMBER"
       - uses: actions/upload-artifact@v4
         with:
           name: mechagram-ios-ipa
           path: bazel-out/**/Telegram/Telegram.ipa
           if-no-files-found: error
+
