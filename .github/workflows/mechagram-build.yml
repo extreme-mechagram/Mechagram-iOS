@@ -15,6 +15,9 @@ jobs:
       - name: Compile simulator preview
         run: |
           xcodebuild -version
+          if ! xcrun --sdk iphonesimulator --show-sdk-version | awk -F. '{exit !($1 > 27 || ($1 == 27 && $2 >= 1))}'; then
+            echo 'build --@build_bazel_rules_swift//swift:copt=-DMECHAGRAM_LEGACY_IOS_SDK' >> .bazelrc
+          fi
           echo 'build --//Telegram:disableProvisioningProfiles' >> .bazelrc
           python3 - <<'PY'
           import json
