@@ -1,4 +1,4 @@
-name: Mechagram iOS Simulator
+name: Mechagram iOS IPA
 on:
   push:
     branches: [mechagram]
@@ -6,16 +6,16 @@ on:
 permissions:
   contents: read
 jobs:
-  simulator:
+  ipa:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Compile simulator preview
+      - name: Build iPhone IPA for re-signing
         run: |
           xcodebuild -version
-          if ! xcrun --sdk iphonesimulator --show-sdk-version | awk -F. '{exit !($1 > 27 || ($1 == 27 && $2 >= 1))}'; then
+          if ! xcrun --sdk iphoneos --show-sdk-version | awk -F. '{exit !($1 > 27 || ($1 == 27 && $2 >= 1))}'; then
             echo 'build --@build_bazel_rules_swift//swift:copt=-DMECHAGRAM_LEGACY_IOS_SDK' >> .bazelrc
           fi
           echo 'build --//Telegram:disableProvisioningProfiles' >> .bazelrc
@@ -26,14 +26,14 @@ jobs:
           config = json.loads(path.read_text())
           config.update(bundle_id="org.tele.ram", app_specific_url_scheme="mechagram",
                         is_appstore_build="false", enable_siri=False, enable_icloud=False)
-          Path("build-system/mechagram-simulator.json").write_text(json.dumps(config))
+          Path("build-system/mechagram-device.json").write_text(json.dumps(config))
           PY
           python3 build-system/Make/Make.py --overrideXcodeVersion build \
-            --configurationPath=build-system/mechagram-simulator.json \
+            --configurationPath=build-system/mechagram-device.json \
             --xcodeManagedCodesigning \
-            --configuration=debug_sim_arm64 --buildNumber="$GITHUB_RUN_NUMBER"
+            --configuration=release_arm64 --buildNumber="$GITHUB_RUN_NUMBER"
       - uses: actions/upload-artifact@v4
         with:
-          name: mechagram-ios-simulator
-          path: bazel-out/**/Telegram/Telegram.zip
+          name: mechagram-ios-ipa
+          path: bazel-out/**/Telegram/Telegram.ipa
           if-no-files-found: error
