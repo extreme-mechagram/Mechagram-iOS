@@ -15,6 +15,22 @@ jobs:
       - name: Build iPhone IPA for re-signing
         run: |
           xcodebuild -version
+          python3 - <<'PY'
+          from pathlib import Path
+          rules = Path("build-system/bazel-rules/rules_apple/apple/internal")
+          profile = rules / "partials/provisioning_profile.bzl"
+          source = profile.read_text()
+          start = source.index("    if not profile_artifact:\n")
+          end = source.index("    # Create intermediate file", start)
+          profile.write_text(source[:start] + "    if not profile_artifact:\n        return struct(bundle_files = [])\n\n" + source[end:])
+          signing = rules / "codesigning_support.bzl"
+          source = signing.read_text()
+          check = "        not provisioning_profile):"
+          assert source.count(check) == 1
+          start = source.index(check) + len(check)
+          end = source.index("\ndef ", start)
+          signing.write_text(source[:start] + "\n        return\n\n" + source[end:])
+          PY
           if ! xcrun --sdk iphoneos --show-sdk-version | awk -F. '{exit !($1 > 27 || ($1 == 27 && $2 >= 1))}'; then
             echo 'build --@build_bazel_rules_swift//swift:copt=-DMECHAGRAM_LEGACY_IOS_SDK' >> .bazelrc
           fi
