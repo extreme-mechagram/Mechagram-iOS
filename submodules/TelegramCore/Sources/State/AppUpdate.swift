@@ -9,12 +9,14 @@ public struct AppUpdateInfo: Equatable {
     public let blocking: Bool
     public let version: String
     public let text: String
+    public let downloadURL: String?
     public let entities: [MessageTextEntity]
     
-    public init(blocking: Bool, version: String, text: String, entities: [MessageTextEntity]) {
+    public init(blocking: Bool, version: String, text: String, entities: [MessageTextEntity], downloadURL: String? = nil) {
         self.blocking = blocking
         self.version = version
         self.text = text
+        self.downloadURL = downloadURL
         self.entities = entities
     }
 }
@@ -27,6 +29,7 @@ extension AppUpdateInfo {
                 self.blocking = (flags & (1 << 0)) != 0
                 self.version = version
                 self.text = text
+                self.downloadURL = appUpdateData.url
                 self.entities = messageTextEntitiesFromApiEntities(entities)
             case .noAppUpdate:
                 return nil

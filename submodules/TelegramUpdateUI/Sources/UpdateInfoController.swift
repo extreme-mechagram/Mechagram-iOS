@@ -9,11 +9,11 @@ import ItemListUI
 import PresentationDataUtils
 
 private final class UpdateInfoControllerArguments {
-    let openAppStorePage: () -> Void
+    let openDownloadPage: () -> Void
     let linkAction: (TextLinkItemActionType, TextLinkItem) -> Void
     
-    init(openAppStorePage: @escaping () -> Void, linkAction: @escaping (TextLinkItemActionType, TextLinkItem) -> Void) {
-        self.openAppStorePage = openAppStorePage
+    init(openDownloadPage: @escaping () -> Void, linkAction: @escaping (TextLinkItemActionType, TextLinkItem) -> Void) {
+        self.openDownloadPage = openDownloadPage
         self.linkAction = linkAction
     }
 }
@@ -75,17 +75,19 @@ private enum UpdateInfoControllerEntry: ItemListNodeEntry {
                 })
             case let .update(_, title):
                 return ItemListActionItem(presentationData: presentationData, systemStyle: .glass, title: title, kind: .generic, alignment: .center, sectionId: self.section, style: .blocks, action: {
-                    arguments.openAppStorePage()
+                    arguments.openDownloadPage()
                 })
         }
     }
 }
 
-private func updateInfoControllerEntries(theme: PresentationTheme, strings: PresentationStrings, appIcon: PresentationAppIcon?, appUpdateInfo: AppUpdateInfo) -> [UpdateInfoControllerEntry] {
+private func updateInfoControllerEntries(theme: PresentationTheme, strings: PresentationStrings, appIcon: PresentationAppIcon?, appUpdateInfo: AppUpdateInfo, hasDownload: Bool) -> [UpdateInfoControllerEntry] {
     var entries: [UpdateInfoControllerEntry] = []
     
     entries.append(.info(theme, appIcon, strings.Update_AppVersion(appUpdateInfo.version).string, appUpdateInfo.text, appUpdateInfo.entities))
-    entries.append(.update(theme, strings.Update_UpdateApp))
+    if hasDownload {
+        entries.append(.update(theme, strings.Update_UpdateApp))
+    }
     
     return entries
 }
@@ -114,8 +116,16 @@ public func updateInfoController(context: AccountContext, appUpdateInfo: AppUpda
     let navigateDisposable = MetaDisposable()
     actionsDisposable.add(navigateDisposable)
     
-    let arguments = UpdateInfoControllerArguments(openAppStorePage: {
-        context.sharedContext.applicationBindings.openAppStorePage()
+    let downloadURL = appUpdateInfo.downloadURL.flatMap { URL(string: $0) }.flatMap { url -> URL? in
+        guard url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty else {
+            return nil
+        }
+        return url
+    }
+    let arguments = UpdateInfoControllerArguments(openDownloadPage: {
+        if let downloadURL = downloadURL {
+            context.sharedContext.applicationBindings.openUrl(downloadURL.absoluteString)
+        }
     }, linkAction: { action, itemLink in
         linkActionImpl?(action, itemLink)
     })
@@ -131,11 +141,11 @@ public func updateInfoController(context: AccountContext, appUpdateInfo: AppUpda
             appIcon = appIcons.filter { $0.isDefault }.first
         }
         
-        let leftNavigationButton = appUpdateInfo.blocking ? nil : ItemListNavigationButton(content: .text(presentationData.strings.Update_Skip), style: .regular, enabled: true, action: {
+        let leftNavigationButton = appUpdateInfo.blocking && downloadURL != nil ? nil : ItemListNavigationButton(content: .text(presentationData.strings.Update_Skip), style: .regular, enabled: true, action: {
             dismissImpl?()
         })
         let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text(presentationData.strings.Update_Title), leftNavigationButton: leftNavigationButton, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back))
-        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: updateInfoControllerEntries(theme: presentationData.theme, strings: presentationData.strings, appIcon: appIcon, appUpdateInfo: appUpdateInfo), style: .blocks, animateChanges: false)
+        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: updateInfoControllerEntries(theme: presentationData.theme, strings: presentationData.strings, appIcon: appIcon, appUpdateInfo: appUpdateInfo, hasDownload: downloadURL != nil), style: .blocks, animateChanges: false)
         
         return (controllerState, (listState, arguments))
     }
