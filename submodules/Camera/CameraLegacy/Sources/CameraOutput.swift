@@ -155,10 +155,21 @@ final class CameraOutput: NSObject {
         }
     }
     
+    private func connectedPhotoFormat(device: CameraDevice) -> AVCaptureDevice.Format? {
+        guard let videoDevice = device.videoDevice,
+              let connection = self.photoOutput.connection(with: .video),
+              connection.inputPorts.contains(where: { port in
+                  port.mediaType == .video && (port.input as? AVCaptureDeviceInput)?.device === videoDevice
+              }) else {
+            return nil
+        }
+        return videoDevice.activeFormat
+    }
+
     private func resetHighResolutionPhoto(device: CameraDevice) {
         self.hasHighResolutionPhoto = false
         if #available(iOS 16.0, *) {
-            guard let format = device.videoDevice?.activeFormat else {
+            guard let format = self.connectedPhotoFormat(device: device) else {
                 return
             }
             let videoDimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
@@ -180,7 +191,7 @@ final class CameraOutput: NSObject {
             return
         }
         if #available(iOS 16.0, *) {
-            guard let photoDimensions = device.photoDimensions, let format = device.videoDevice?.activeFormat else {
+            guard let photoDimensions = device.photoDimensions, let format = self.connectedPhotoFormat(device: device) else {
                 return
             }
             if format.supportedMaxPhotoDimensions.contains(where: { $0.width == photoDimensions.width && $0.height == photoDimensions.height }) {
