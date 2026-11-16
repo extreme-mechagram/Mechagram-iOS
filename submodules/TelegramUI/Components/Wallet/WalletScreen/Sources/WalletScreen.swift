@@ -2688,6 +2688,19 @@ private final class WalletScreenComponent: Component {
             ))
         }
 
+        private func openMechagramGifts() {
+            guard let context = self.component?.context, let controller = self.environment?.controller() else {
+                return
+            }
+            let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: context.account.peerId))
+            |> deliverOnMainQueue).start(next: { [weak controller] peer in
+                guard let peer, let profile = context.sharedContext.makePeerInfoController(context: context, updatedPresentationData: nil, peer: peer, mode: .gifts, avatarInitiallyExpanded: false, fromChat: false, requestsContext: nil) else {
+                    return
+                }
+                controller?.push(profile)
+            })
+        }
+
         private func openWalletSettings() {
             guard let component = self.component, let controller = self.environment?.controller() else {
                 return
@@ -2911,6 +2924,14 @@ private final class WalletScreenComponent: Component {
                     action: { [weak self] _, dismiss in
                         dismiss(.default)
                         self?.openWalletSettings()
+                    }
+                )),
+                .action(ContextMenuActionItem(
+                    text: presentationData.strings.baseLanguageCode.hasPrefix("ru") ? "Подарки Mechagram" : "Mechagram Gifts",
+                    icon: { _ in nil },
+                    action: { [weak self] _, dismiss in
+                        dismiss(.default)
+                        self?.openMechagramGifts()
                     }
                 )),
                 .separator,
