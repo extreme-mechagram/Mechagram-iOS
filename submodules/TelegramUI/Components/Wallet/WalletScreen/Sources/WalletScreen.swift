@@ -3338,9 +3338,6 @@ private final class WalletScreenComponent: Component {
                 self.pendingCollectiblesSection = false
                 self.selectedSection = .collectibles
             }
-            if collectibles.isEmpty && self.selectedSection == .collectibles {
-                self.selectedSection = .transactions
-            }
             let hasEmptyTransactions = self.selectedSection == .transactions && transactions.isEmpty
 
             let headerLayout = self.updateHeader(
@@ -3597,21 +3594,17 @@ private final class WalletScreenComponent: Component {
                 self.accountProtectionSection.view?.removeFromSuperview()
             }
 
-            if !collectibles.isEmpty {
-                let transactionTabsOriginY = contentHeight + 12.0
-                let transactionTabsSize = self.updateTransactionTabs(
-                    component: component,
-                    environment: environment,
-                    state: state,
-                    availableWidth: availableSize.width,
-                    containerWidth: cardWidth,
-                    originY: transactionTabsOriginY,
-                    transition: contentLayoutTransition
-                )
-                contentHeight = transactionTabsOriginY + transactionTabsSize.height
-            } else if self.transactionTabsBackgroundView.superview != nil {
-                self.transactionTabsBackgroundView.removeFromSuperview()
-            }
+            let transactionTabsOriginY = contentHeight + 12.0
+            let transactionTabsSize = self.updateTransactionTabs(
+                component: component,
+                environment: environment,
+                state: state,
+                availableWidth: availableSize.width,
+                containerWidth: cardWidth,
+                originY: transactionTabsOriginY,
+                transition: contentLayoutTransition
+            )
+            contentHeight = transactionTabsOriginY + transactionTabsSize.height
 
             if self.selectedSection == .transactions && !collectibles.isEmpty {
                 let collectiblesFrame = CGRect(x: environment.safeInsets.left + sideInset,
@@ -3769,9 +3762,6 @@ private final class WalletScreenComponent: Component {
 
                 transition.setBackgroundColor(view: self, color: environment.theme.list.blocksBackgroundColor)
             } else {
-                if collectibles.isEmpty && self.transactionTabsBackgroundView.superview != nil {
-                    self.transactionTabsBackgroundView.removeFromSuperview()
-                }
                 self.collectiblesSection.removeFromSuperview()
                 if collectibles.isEmpty {
                     self.collectiblesSection.clearVisibleItems()
