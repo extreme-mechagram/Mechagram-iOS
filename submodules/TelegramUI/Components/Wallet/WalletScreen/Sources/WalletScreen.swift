@@ -1241,7 +1241,7 @@ private final class WalletScreenComponent: Component {
             ), in: .current)
         }
 
-        private func trackActivationPhase(_ phase: WalletContext.State.Phase, previousPhase: WalletContext.State.Phase?) {
+        private func trackActivationPhase(_ phase: WalletContext.Phase, previousPhase: WalletContext.Phase?) {
             self.restoringStuckWorkItem?.cancel()
             self.restoringStuckWorkItem = nil
             switch phase {
