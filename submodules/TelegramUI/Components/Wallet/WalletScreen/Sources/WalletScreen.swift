@@ -815,6 +815,7 @@ private final class WalletScreenComponent: Component {
         private var walletContext: WalletContext?
         private var walletState: WalletContext.State?
         private var walletStateDisposable: Disposable?
+        private var restoringStuckWorkItem: DispatchWorkItem?
         private var suppressedCollectibleAddresses = Set<String>()
         private var suppressedCollectiblesWalletAddress: String?
         private let loadMoreDisposable = MetaDisposable()
@@ -1232,6 +1233,71 @@ private final class WalletScreenComponent: Component {
                 content: .info(
                     title: text == nil ? nil : strings.Wallet_Sticker_SaveErrorTitle,
                     text: text ?? strings.Wallet_Sticker_SaveErrorTitle,
+                    timeout: nil,
+                    customUndoText: nil
+                ),
+                position: .bottom,
+                action: { _ in false }
+            ), in: .current)
+        }
+
+        private func trackActivationPhase(_ phase: WalletContext.State.Phase, previousPhase: WalletContext.State.Phase?) {
+            self.restoringStuckWorkItem?.cancel()
+            self.restoringStuckWorkItem = nil
+            switch phase {
+            case .restoring:
+                let workItem = DispatchWorkItem { [weak self] in
+                    guard let self, case .restoring = self.walletState?.phase else { return }
+                    self.presentActivationStuckWarning()
+                }
+                self.restoringStuckWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 25.0, execute: workItem)
+            case .failed(let error):
+                if previousPhase != phase {
+                    self.presentActivationFailure(error)
+                }
+            default:
+                break
+            }
+        }
+
+        private func presentActivationFailure(_ error: WalletContext.FatalStorageError) {
+            guard self.environment?.isVisible == true else { return }
+            guard let component = self.component, let controller = self.environment?.controller() else { return }
+            let data = self.currentPresentationData(for: component)
+            let description: String
+            switch error {
+            case .unsupportedVersion:
+                description = "unsupported engine version"
+            case .identityMismatch:
+                description = "stored identity mismatch"
+            case .corrupted:
+                description = "storage corrupted"
+            case .keychainStatus(let status):
+                description = "keychain status \(status)"
+            }
+            controller.present(UndoOverlayController(
+                presentationData: data.initial,
+                content: .info(
+                    title: "[Diag] Wallet activation failed",
+                    text: "[Diag] \(description). Send this text to support.",
+                    timeout: nil,
+                    customUndoText: nil
+                ),
+                position: .bottom,
+                action: { _ in false }
+            ), in: .current)
+        }
+
+        private func presentActivationStuckWarning() {
+            guard self.environment?.isVisible == true else { return }
+            guard let component = self.component, let controller = self.environment?.controller() else { return }
+            let data = self.currentPresentationData(for: component)
+            controller.present(UndoOverlayController(
+                presentationData: data.initial,
+                content: .info(
+                    title: "[Diag] Wallet activation stuck",
+                    text: "[Diag] Still restoring after 25s. Send this text to support.",
                     timeout: nil,
                     customUndoText: nil
                 ),
@@ -3237,6 +3303,7 @@ private final class WalletScreenComponent: Component {
                     self.observePendingTransfers(walletState)
                     let newCardError = walletState.cardStickerSaveError != self.walletState?.cardStickerSaveError
                     self.walletState = walletState
+                    self.trackActivationPhase(walletState.phase, previousPhase: previousPhase)
                     if newCardError, let error = walletState.cardStickerSaveError { self.presentCardSaveError(error) }
                     if previousPhase != walletState.phase || previousWalletAddress != walletState.walletAddress {
                         if previousWalletAddress != walletState.walletAddress {

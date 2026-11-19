@@ -583,6 +583,7 @@ actor WalletContextImpl {
             }
             self.serverStateRetryTask?.cancel()
             self.serverStateRetryTask = nil
+            self.logger.log("event=wallet_state_received state=\(value)")
             self.applyServerWalletState(value, forceActivation: promotedReplacement, balanceOverlayRevision: balanceOverlayRevision)
         } catch is CancellationError {
         } catch {
@@ -809,10 +810,13 @@ actor WalletContextImpl {
         serverStateRevision: UInt64
     ) async {
         do {
+            self.logger.log("event=wallet_activation_started canExportPhrase=\(canExportPhrase)")
             let authorizationGeneration = try self.authorization.operationGeneration(requireAvailable: false)
             try await self.authorization.waitUntilAvailable(generation: authorizationGeneration)
+            self.logger.log("event=wallet_activation_stage stage=auth_ok")
             await self.runtime.setLastKnownBalance(supersededBalance)
             let stored = try await self.storage.loadDescriptor()
+            self.logger.log("event=wallet_activation_stage stage=descriptor_loaded stored=\(stored != nil)")
             let storedMatchesIdentity = stored.map {
                 $0.schemaVersion == 2
                     && $0.network == "mainnet"
@@ -828,6 +832,7 @@ actor WalletContextImpl {
                 hasStoredSecret = false
             }
             let needsSecret = !hasStoredSecret
+            self.logger.log("event=wallet_activation_stage stage=secret_checked needsSecret=\(needsSecret) storedMatchesIdentity=\(storedMatchesIdentity)")
             var words: [String]?
             if needsSecret && canExportPhrase,
                !self.hasAttemptedAutomaticPhraseRecovery(address: address, publicKey: publicKey),
@@ -849,6 +854,9 @@ actor WalletContextImpl {
                     self.logger.error("wallet_automatic_phrase_export_failed", error)
                 }
             }
+            try Task.checkCancellation()
+            guard self.activationGeneration == generation else { return }
+            self.logger.log("event=wallet_activation_stage stage=runtime_activating")
             let activation: WalletEngineActivation
             if let words {
                 do {
@@ -896,6 +904,7 @@ actor WalletContextImpl {
                 canEnableBackup: canEnableBackup,
                 canSign: activation.canSign
             )
+            self.logger.log("event=wallet_activation_stage stage=runtime_activated canSign=\(activation.canSign)")
             let submissions = try await self.storage.loadTransferSubmissions()
             guard !Task.isCancelled, self.activationGeneration == generation else { return }
             self.transferSubmissions.restore(submissions)
