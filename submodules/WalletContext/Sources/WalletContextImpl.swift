@@ -811,12 +811,15 @@ actor WalletContextImpl {
     ) async {
         do {
             self.logger.log("event=wallet_activation_started canExportPhrase=\(canExportPhrase)")
+            WalletActivationDiagnostics.lastStage = "started"
             let authorizationGeneration = try self.authorization.operationGeneration(requireAvailable: false)
             try await self.authorization.waitUntilAvailable(generation: authorizationGeneration)
             self.logger.log("event=wallet_activation_stage stage=auth_ok")
+            WalletActivationDiagnostics.lastStage = "auth_ok"
             await self.runtime.setLastKnownBalance(supersededBalance)
             let stored = try await self.storage.loadDescriptor()
             self.logger.log("event=wallet_activation_stage stage=descriptor_loaded stored=\(stored != nil)")
+            WalletActivationDiagnostics.lastStage = "descriptor_loaded"
             let storedMatchesIdentity = stored.map {
                 $0.schemaVersion == 2
                     && $0.network == "mainnet"
@@ -832,6 +835,7 @@ actor WalletContextImpl {
                 hasStoredSecret = false
             }
             let needsSecret = !hasStoredSecret
+            WalletActivationDiagnostics.lastStage = "secret_checked needsSecret=\(needsSecret)"
             self.logger.log("event=wallet_activation_stage stage=secret_checked needsSecret=\(needsSecret) storedMatchesIdentity=\(storedMatchesIdentity)")
             var words: [String]?
             if needsSecret && canExportPhrase,
@@ -857,6 +861,7 @@ actor WalletContextImpl {
             try Task.checkCancellation()
             guard self.activationGeneration == generation else { return }
             self.logger.log("event=wallet_activation_stage stage=runtime_activating")
+            WalletActivationDiagnostics.lastStage = "runtime_activating"
             let activation: WalletEngineActivation
             if let words {
                 do {
@@ -905,6 +910,7 @@ actor WalletContextImpl {
                 canSign: activation.canSign
             )
             self.logger.log("event=wallet_activation_stage stage=runtime_activated canSign=\(activation.canSign)")
+            WalletActivationDiagnostics.lastStage = "runtime_activated"
             let submissions = try await self.storage.loadTransferSubmissions()
             guard !Task.isCancelled, self.activationGeneration == generation else { return }
             self.transferSubmissions.restore(submissions)
@@ -934,6 +940,7 @@ actor WalletContextImpl {
             self.evaluateRuntimeDemand(refreshIfPollingBecomesActive: false)
         } catch let error as WalletEngineStorageError {
             guard !self.isShutdown, self.activationGeneration == generation else { return }
+            WalletActivationDiagnostics.lastStage = "failed_storage"
             self.logger.error("wallet_engine_activation_failed", error)
             self.replaceState(
                 phase: .failed(Self.storageError(error)),
@@ -944,6 +951,7 @@ actor WalletContextImpl {
             )
         } catch {
             guard !self.isShutdown, self.activationGeneration == generation else { return }
+            WalletActivationDiagnostics.lastStage = "failed_generic"
             self.logger.error("wallet_engine_activation_failed", error)
             self.replaceState(
                 phase: .failed(.unsupportedVersion),

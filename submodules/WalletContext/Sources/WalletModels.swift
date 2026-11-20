@@ -1209,3 +1209,8 @@ extension WalletContext.ActiveOperation {
         }
     }
 }
+
+@available(macOS 10.15, *)
+public enum WalletActivationDiagnostics {
+    public static var lastStage: String = "idle"
+}

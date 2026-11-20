@@ -1242,23 +1242,57 @@ private final class WalletScreenComponent: Component {
         }
 
         private func trackActivationPhase(_ phase: WalletContext.Phase, previousPhase: WalletContext.Phase?) {
-            self.restoringStuckWorkItem?.cancel()
-            self.restoringStuckWorkItem = nil
-            switch phase {
-            case .restoring:
-                let workItem = DispatchWorkItem { [weak self] in
-                    guard let self, case .restoring = self.walletState?.phase else { return }
-                    self.presentActivationStuckWarning()
+            if case .restoring = phase {
+                if previousPhase == nil || previousPhase != phase {
+                    self.restoringStuckWorkItem?.cancel()
+                    let workItem = DispatchWorkItem { [weak self] in
+                        guard let self, case .restoring = self.walletState?.phase else { return }
+                        self.presentActivationStuckWarning()
+                    }
+                    self.restoringStuckWorkItem = workItem
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 25.0, execute: workItem)
                 }
-                self.restoringStuckWorkItem = workItem
-                DispatchQueue.main.asyncAfter(deadline: .now() + 25.0, execute: workItem)
-            case .failed(let error):
-                if previousPhase != phase {
-                    self.presentActivationFailure(error)
-                }
-            default:
-                break
+            } else {
+                self.restoringStuckWorkItem?.cancel()
+                self.restoringStuckWorkItem = nil
             }
+            self.updateDiagnosticsLabel(phase)
+            if case .failed(let error) = phase, previousPhase != phase {
+                self.presentActivationFailure(error)
+            }
+        }
+
+        private var diagnosticsLabel: UILabel?
+        private func updateDiagnosticsLabel(_ phase: WalletContext.Phase) {
+            guard let controller = self.environment?.controller() else { return }
+            let label: UILabel
+            if let existing = self.diagnosticsLabel {
+                label = existing
+            } else {
+                label = UILabel()
+                label.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+                label.textColor = UIColor.white
+                label.font = UIFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+                label.numberOfLines = 2
+                label.textAlignment = .center
+                self.diagnosticsLabel = label
+            }
+            if label.superview == nil {
+                controller.view.addSubview(label)
+            }
+            let phaseText: String
+            switch phase {
+            case .restoring: phaseText = "restoring"
+            case .creating: phaseText = "creating"
+            case .empty: phaseText = "empty"
+            case .wallet: phaseText = "wallet"
+            case .failed: phaseText = "failed"
+            }
+            let txCount = self.walletState?.transactions.items.count ?? -1
+            let colCount = self.walletState?.collectibles.items.count ?? -1
+            label.text = "[Diag] phase=\(phaseText) stage=\(WalletActivationDiagnostics.lastStage) tx=\(txCount) col=\(colCount)"
+            let targetWidth = controller.view.bounds.width - 24
+            label.frame = CGRect(x: 12, y: controller.view.bounds.height - 140, width: targetWidth, height: 34)
         }
 
         private func presentActivationFailure(_ error: WalletContext.FatalStorageError) {
