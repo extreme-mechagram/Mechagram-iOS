@@ -1262,6 +1262,12 @@ private final class WalletScreenComponent: Component {
             }
         }
 
+        private func refreshDiagnosticsLabel() {
+            if let phase = self.walletState?.phase {
+                self.updateDiagnosticsLabel(phase)
+            }
+        }
+
         private var diagnosticsLabel: UILabel?
         private func updateDiagnosticsLabel(_ phase: WalletContext.Phase) {
             guard let controller = self.environment?.controller() else { return }
@@ -4120,9 +4126,7 @@ private final class WalletScreenComponent: Component {
             }
             self.giftStickers.update(context: component.context, wallet: component.walletContext,
                 state: self.walletState, card: self.card.view as? WalletCardComponent.View, visible: environment.isVisible)
-            if let walletState = self.walletState {
-                self.trackActivationPhase(walletState.phase, previousPhase: walletState.phase == .restoring ? .wallet : nil)
-            }
+            self.refreshDiagnosticsLabel()
             return availableSize
         }
     }
