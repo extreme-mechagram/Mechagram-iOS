@@ -940,7 +940,7 @@ actor WalletContextImpl {
             self.evaluateRuntimeDemand(refreshIfPollingBecomesActive: false)
         } catch let error as WalletEngineStorageError {
             guard !self.isShutdown, self.activationGeneration == generation else { return }
-            WalletActivationDiagnostics.lastStage = "failed_storage"
+            WalletActivationDiagnostics.lastStage = "failed_storage(\(error)) after=\(WalletActivationDiagnostics.lastStage)"
             self.logger.error("wallet_engine_activation_failed", error)
             self.replaceState(
                 phase: .failed(Self.storageError(error)),
@@ -951,7 +951,7 @@ actor WalletContextImpl {
             )
         } catch {
             guard !self.isShutdown, self.activationGeneration == generation else { return }
-            WalletActivationDiagnostics.lastStage = "failed_generic"
+            WalletActivationDiagnostics.lastStage = "failed_generic(\(String(describing: error).prefix(80))) after=\(WalletActivationDiagnostics.lastStage)"
             self.logger.error("wallet_engine_activation_failed", error)
             self.replaceState(
                 phase: .failed(.unsupportedVersion),

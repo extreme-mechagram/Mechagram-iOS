@@ -480,14 +480,16 @@ actor WalletEngineStorage {
     }
 
     func containsProtectedSecret(_ secretRef: ProtectedSecretRef) throws -> Bool {
-        var query = try self.baseQuery(service: self.secretService, account: secretRef.value)
-        query[kSecReturnAttributes as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return false }
-        guard status == errSecSuccess else { throw WalletEngineStorageError.keychainStatus(status) }
-        return true
+        try self.withGroupFallback {
+            var query = try self.baseQuery(service: self.secretService, account: secretRef.value)
+            query[kSecReturnAttributes as String] = true
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
+            var result: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &result)
+            if status == errSecItemNotFound { return false }
+            guard status == errSecSuccess else { throw WalletEngineStorageError.keychainStatus(status) }
+            return true
+        }
     }
 
     func storeProtectedSecret(_ request: ProtectedSecretStore) throws {
@@ -561,6 +563,11 @@ actor WalletEngineStorage {
         }
     }
 
+    // A re-signed (sideloaded) IPA may not carry the "<team>.<bundle>" keychain group the
+    // App Store build has; every query naming it then fails with errSecMissingEntitlement.
+    // Such installs fall back to the app's default keychain group, still private to the app.
+    nonisolated(unsafe) private static var privateGroupUnavailable = false
+
     private func baseQuery(service: String, account: String) throws -> [String: Any] {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -568,13 +575,34 @@ actor WalletEngineStorage {
             kSecAttrAccount as String: account,
             kSecAttrSynchronizable as String: false
         ]
-        if let group = try WalletVault.keychainAccessGroup() {
+        if !Self.privateGroupUnavailable, let group = try? WalletVault.keychainAccessGroup() {
             query[kSecAttrAccessGroup as String] = group
         }
         return query
     }
 
+    private func withGroupFallback<T>(_ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch WalletEngineStorageError.keychainStatus(errSecMissingEntitlement) where !Self.privateGroupUnavailable {
+            Self.privateGroupUnavailable = true
+            return try body()
+        }
+    }
+
     private func read(service: String, account: String) throws -> Data? {
+        try self.withGroupFallback { try self.readOnce(service: service, account: account) }
+    }
+
+    private func write(_ data: Data, service: String, account: String) throws {
+        try self.withGroupFallback { try self.writeOnce(data, service: service, account: account) }
+    }
+
+    private func remove(service: String, account: String) throws {
+        try self.withGroupFallback { try self.removeOnce(service: service, account: account) }
+    }
+
+    private func readOnce(service: String, account: String) throws -> Data? {
         var query = try self.baseQuery(service: service, account: account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -589,7 +617,7 @@ actor WalletEngineStorage {
         return data
     }
 
-    private func write(_ data: Data, service: String, account: String) throws {
+    private func writeOnce(_ data: Data, service: String, account: String) throws {
         let query = try self.baseQuery(service: service, account: account)
         let updateStatus = SecItemUpdate(
             query as CFDictionary,
@@ -610,7 +638,7 @@ actor WalletEngineStorage {
         }
     }
 
-    private func remove(service: String, account: String) throws {
+    private func removeOnce(service: String, account: String) throws {
         let status = SecItemDelete(try self.baseQuery(service: service, account: account) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw WalletEngineStorageError.keychainStatus(status)
