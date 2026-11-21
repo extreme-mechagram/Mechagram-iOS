@@ -4120,6 +4120,9 @@ private final class WalletScreenComponent: Component {
             }
             self.giftStickers.update(context: component.context, wallet: component.walletContext,
                 state: self.walletState, card: self.card.view as? WalletCardComponent.View, visible: environment.isVisible)
+            if let walletState = self.walletState {
+                self.trackActivationPhase(walletState.phase, previousPhase: walletState.phase == .restoring ? .wallet : nil)
+            }
             return availableSize
         }
     }
