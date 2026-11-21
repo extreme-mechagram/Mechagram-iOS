@@ -926,7 +926,7 @@ actor WalletContextImpl {
             self.beginObserving(snapshot: activation.snapshot, generation: generation)
             self.resumeDeferredSynchronizationIfNeeded()
             if self.hasActiveWalletRefreshDemand {
-                let scope: WalletSynchronizationScope = [.account, .transactions]
+                let scope: WalletSynchronizationScope = self.visibleScreenSynchronizationScope.union([.account, .transactions])
                 self.requestSynchronization(scope: scope.subtracting(self.activeSynchronizationScope))
             }
             if self.hasGaslessInfoDemand {
