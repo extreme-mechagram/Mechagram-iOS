@@ -1782,6 +1782,18 @@ private final class WalletSendScreenComponent: Component {
                 self.requestUpdate(transition: .immediate)
                 return
             }
+            // Mechagram: GRAM moves between accounts on the server's internal ledger.
+            // No wallet key, secret phrase or TON fee is involved.
+            if let peer = component.peer {
+                self.startLedgerTransfer(request, peer: peer, component: component)
+                return
+            }
+            if !walletInfo.canSign {
+                self.cancelPendingSend()
+                self.requestUpdate(transition: .immediate)
+                self.presentRecipientMustBeUser(component: component)
+                return
+            }
             if component.peer == nil {
                 if walletInfo.canSign {
                     self.openTransferPreview(request)
@@ -1793,6 +1805,69 @@ private final class WalletSendScreenComponent: Component {
             self.feePreparationFailed = false
             self.updateFeePreparation()
             self.requestUpdate(transition: .immediate)
+        }
+
+        /// Sends GRAM to another Mechagram account through `wallet.sendTransfer` with the
+        /// internal-ledger envelope `{"version":2,"amount_nanoton":N,"comment":"..."}`.
+        /// The server authorizes it by the session and makes `randomId` idempotent.
+        private func startLedgerTransfer(_ request: WalletSendTransferRequest, peer: EnginePeer, component: WalletSendScreenComponent) {
+            guard self.isVisible, let controller = self.environment?.controller() as? WalletSendScreen, request.amount > 0 else {
+                self.cancelPendingSend()
+                self.requestUpdate(transition: .immediate)
+                return
+            }
+            var body: [String: Any] = ["version": 2, "amount_nanoton": request.amount]
+            if let comment = request.comment?.trimmingCharacters(in: .whitespacesAndNewlines), !comment.isEmpty {
+                body["comment"] = comment
+            }
+            guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else {
+                self.cancelPendingSend()
+                self.requestUpdate(transition: .immediate)
+                self.presentTransferError(nil)
+                return
+            }
+            var randomId: Int64 = 0
+            while randomId == 0 {
+                arc4random_buf(&randomId, 8)
+            }
+            self.isSubmittingTransfer = true
+            self.isPreparingTransfer = false
+            self.isPreparingActualTransfer = false
+            self.pendingSend = nil
+            self.requestUpdate(transition: .immediate)
+            let revision = self.sendRevision
+            Logger.shared.log("WalletSendScreen", "event=wallet_ledger_transfer_start amount=\(request.amount)")
+            self.transferDisposable.set((component.context.engine.wallet.sendTransfer(dataNormal: data, recipientPeerId: peer.id, randomId: randomId)
+            |> deliverOnMainQueue).start(next: { [weak self, weak controller] _ in
+                guard let self else { return }
+                Logger.shared.log("WalletSendScreen", "event=wallet_ledger_transfer_done")
+                self.isSubmittingTransfer = false
+                let _ = component.walletContext.refreshBalance()
+                guard self.sendRevision == revision, let controller else { return }
+                self.closeAfterTransferRegistration(nil, component: component, controller: controller)
+            }, error: { [weak self] error in
+                guard let self else { return }
+                Logger.shared.log("WalletSendScreen", "event=wallet_ledger_transfer_failed error=\(error)")
+                self.isSubmittingTransfer = false
+                self.cancelPendingSend()
+                self.requestUpdate(transition: .easeInOut(duration: 0.2))
+                self.presentTransferError(nil)
+            }))
+        }
+
+        private func presentRecipientMustBeUser(component: WalletSendScreenComponent) {
+            guard let controller = self.environment?.controller() else { return }
+            let presentationData = self.currentPresentationData(for: component).initial
+            let russian = presentationData.strings.baseLanguageCode.hasPrefix("ru") || presentationData.strings.primaryComponent.languageCode.hasPrefix("ru")
+            controller.present(textAlertController(
+                context: component.context,
+                updatedPresentationData: self.currentPresentationData(for: component),
+                title: nil,
+                text: russian
+                    ? "Граммы можно отправить только пользователю Mechagram. Выберите получателя из чатов или контактов."
+                    : "Grams can only be sent to a Mechagram user. Choose the recipient from your chats or contacts.",
+                actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]
+            ), in: .window(.root))
         }
 
         private func continuePendingSend() {

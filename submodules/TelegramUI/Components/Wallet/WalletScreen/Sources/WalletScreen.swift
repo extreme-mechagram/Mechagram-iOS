@@ -2614,6 +2614,12 @@ private final class WalletScreenComponent: Component {
                 self.routeToSend(address: address)
                 return
             }
+            // Mechagram: sending GRAM to an account is an internal ledger transfer and
+            // needs no wallet key, so the recipient picker opens without the secret phrase.
+            if address == nil || !walletInfo.canSign {
+                self.routeToSend(address: address)
+                return
+            }
             if !walletInfo.canSign {
                 if walletInfo.canExportPhrase {
                     self.isResolvingSigningAccess = true
