@@ -590,11 +590,6 @@ actor WalletEngineStorage {
         }
     }
 
-    // A re-signed (sideloaded) IPA may not carry the "<team>.<bundle>" keychain group the
-    // App Store build has; every query naming it then fails with errSecMissingEntitlement.
-    // Such installs fall back to the app's default keychain group, still private to the app.
-    nonisolated(unsafe) private static var privateGroupUnavailable = false
-
     // Some re-signs drop keychain access entirely: every SecItem call, in any group,
     // fails with errSecMissingEntitlement. Fall back to a private file under
     // Application Support so the wallet still activates (view-only: canSign stays
