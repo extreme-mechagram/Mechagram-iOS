@@ -33,8 +33,10 @@ private struct StarsProduct: Equatable {
     }
     
     let option: Option
-    let storeProduct: InAppPurchaseManager.Product
-    
+    // nil for a server package without an App Store product (Mechagram: paid by
+    // SBP through the server's checkout link instead of StoreKit).
+    let storeProduct: InAppPurchaseManager.Product?
+
     var count: Int64 {
         switch self.option {
         case let .topUp(option):
@@ -54,11 +56,22 @@ private struct StarsProduct: Equatable {
     }
     
     var id: String {
-        return self.storeProduct.id
+        if let storeProduct = self.storeProduct {
+            return storeProduct.id
+        }
+        return "checkout_\(self.count)"
     }
 
     var price: String {
-        return self.storeProduct.price
+        if let storeProduct = self.storeProduct {
+            return storeProduct.price
+        }
+        switch self.option {
+        case let .topUp(option):
+            return formatCurrencyAmount(option.amount, currency: option.currency)
+        case let .gift(option):
+            return formatCurrencyAmount(option.amount, currency: option.currency)
+        }
     }
 }
 
@@ -350,7 +363,7 @@ private final class StarsPurchaseScreenContentComponent: CombinedComponent {
                     ))
                     
                     let backgroundComponent: AnyComponent<Empty>?
-                    if product.storeProduct.id == context.component.selectedProductId {
+                    if product.id == context.component.selectedProductId {
                         backgroundComponent = AnyComponent(
                             ItemShimmeringLoadingComponent(
                                 color: environment.theme.list.itemAccentColor,
@@ -646,6 +659,10 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
                     for option in options {
                         if let product = availableProducts.first(where: { $0.id == option.storeProductId }) {
                             products.append(StarsProduct(option: .topUp(option), storeProduct: product))
+                        } else if option.storeProductId == nil {
+                            // No App Store product: the server sells this package through
+                            // its own checkout link.
+                            products.append(StarsProduct(option: .topUp(option), storeProduct: nil))
                         }
                     }
                     return products
@@ -683,15 +700,22 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
         }
         
         func buy(product: StarsProduct) {
-            guard let inAppPurchaseManager = self.context.inAppPurchaseManager, self.progressProduct == nil else {
+            guard self.progressProduct == nil else {
                 return
             }
-            
+            guard let storeProduct = product.storeProduct else {
+                self.buyViaCheckoutLink(product: product)
+                return
+            }
+            guard let inAppPurchaseManager = self.context.inAppPurchaseManager else {
+                return
+            }
+
             self.progressProduct = product
             self.updateInProgress(true)
             self.updated(transition: .easeInOut(duration: 0.2))
-            
-            let (currency, amount) = product.storeProduct.priceCurrencyAndAmount
+
+            let (currency, amount) = storeProduct.priceCurrencyAndAmount
             let purpose: AppStoreTransactionPurpose
             switch self.purpose {
             case let .gift(peerId):
@@ -705,7 +729,7 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
                 if let strongSelf = self {
                     let presentationData = strongSelf.context.sharedContext.currentPresentationData.with { $0 }
                     if available {
-                        strongSelf.paymentDisposable.set((inAppPurchaseManager.buyProduct(product.storeProduct, purpose: purpose)
+                        strongSelf.paymentDisposable.set((inAppPurchaseManager.buyProduct(storeProduct, purpose: purpose)
                         |> deliverOnMainQueue).start(next: { [weak self] status in
                             if let self, case .purchased = status {
                                 self.updateInProgress(false)
@@ -752,6 +776,43 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
             })
         }
         
+        /// A package without an App Store product: the server's payment form
+        /// carries a checkout URL (Mechagram: SBP through the Telegram payment
+        /// bot). It opens outside the app, in Safari, so a t.me link there
+        /// reaches the Telegram app instead of being handled as an in-app link.
+        func buyViaCheckoutLink(product: StarsProduct) {
+            guard case let .topUp(option) = product.option else {
+                return
+            }
+            self.progressProduct = product
+            self.updateInProgress(true)
+            self.updated(transition: .easeInOut(duration: 0.2))
+
+            let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
+            self.paymentDisposable.set((self.context.engine.payments.fetchBotPaymentForm(source: .stars(option: option, peerId: self.purpose.commercialPeerId), themeParams: nil)
+            |> deliverOnMainQueue).start(next: { [weak self] form in
+                guard let self else {
+                    return
+                }
+                self.progressProduct = nil
+                self.updateInProgress(false)
+                self.updated(transition: .easeInOut(duration: 0.2))
+                if let url = form.url, url.hasPrefix("https://") {
+                    self.context.sharedContext.applicationBindings.openUrl(url)
+                } else {
+                    self.present(textAlertController(context: self.context, title: nil, text: presentationData.strings.Premium_Purchase_ErrorUnknown, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]))
+                }
+            }, error: { [weak self] _ in
+                guard let self else {
+                    return
+                }
+                self.progressProduct = nil
+                self.updateInProgress(false)
+                self.updated(transition: .easeInOut(duration: 0.2))
+                self.present(textAlertController(context: self.context, title: nil, text: presentationData.strings.Premium_Purchase_ErrorUnknown, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]))
+            }))
+        }
+
         func updateIsFocused(_ isFocused: Bool) {
             self.hasIdleAnimations = !isFocused
             self.updated(transition: .immediate)
@@ -892,7 +953,7 @@ private final class StarsPurchaseScreenComponent: CombinedComponent {
                         balance: state.starsState?.balance,
                         options: context.component.options,
                         purpose: context.component.purpose,
-                        selectedProductId: state.progressProduct?.storeProduct.id,
+                        selectedProductId: state.progressProduct?.id,
                         forceDark: context.component.forceDark,
                         products: state.products,
                         expanded: state.isExpanded,

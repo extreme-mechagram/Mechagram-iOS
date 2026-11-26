@@ -590,16 +590,68 @@ actor WalletEngineStorage {
         }
     }
 
+    // A re-signed (sideloaded) IPA may not carry the "<team>.<bundle>" keychain group the
+    // App Store build has; every query naming it then fails with errSecMissingEntitlement.
+    // Such installs fall back to the app's default keychain group, still private to the app.
+    nonisolated(unsafe) private static var privateGroupUnavailable = false
+
+    // Some re-signs drop keychain access entirely: every SecItem call, in any group,
+    // fails with errSecMissingEntitlement. Fall back to a private file under
+    // Application Support so the wallet still activates (view-only: canSign stays
+    // false because no protected secret can be stored).
+    nonisolated(unsafe) private static var keychainUnavailable = false
+
+    private static func fileStoreURL(service: String, account: String) throws -> URL {
+        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw WalletEngineStorageError.corrupted
+        }
+        let dir = base.appendingPathComponent("MechagramWalletStore", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name = Data("\(service)\u{0}\(account)".utf8).base64EncodedString()
+            .replacingOccurrences(of: "/", with: "_")
+        return dir.appendingPathComponent("\(name).bin")
+    }
+
     private func read(service: String, account: String) throws -> Data? {
-        try self.withGroupFallback { try self.readOnce(service: service, account: account) }
+        if Self.keychainUnavailable {
+            let url = try Self.fileStoreURL(service: service, account: account)
+            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+            return try Data(contentsOf: url)
+        }
+        do {
+            return try self.withGroupFallback { try self.readOnce(service: service, account: account) }
+        } catch WalletEngineStorageError.keychainStatus(let status) where status == errSecMissingEntitlement {
+            Self.keychainUnavailable = true
+            let url = try Self.fileStoreURL(service: service, account: account)
+            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+            return try Data(contentsOf: url)
+        }
     }
 
     private func write(_ data: Data, service: String, account: String) throws {
-        try self.withGroupFallback { try self.writeOnce(data, service: service, account: account) }
+        if Self.keychainUnavailable {
+            try data.write(to: Self.fileStoreURL(service: service, account: account), options: .atomic)
+            return
+        }
+        do {
+            try self.withGroupFallback { try self.writeOnce(data, service: service, account: account) }
+        } catch WalletEngineStorageError.keychainStatus(let status) where status == errSecMissingEntitlement {
+            Self.keychainUnavailable = true
+            try data.write(to: Self.fileStoreURL(service: service, account: account), options: .atomic)
+        }
     }
 
     private func remove(service: String, account: String) throws {
-        try self.withGroupFallback { try self.removeOnce(service: service, account: account) }
+        if Self.keychainUnavailable {
+            try? FileManager.default.removeItem(at: Self.fileStoreURL(service: service, account: account))
+            return
+        }
+        do {
+            try self.withGroupFallback { try self.removeOnce(service: service, account: account) }
+        } catch WalletEngineStorageError.keychainStatus(let status) where status == errSecMissingEntitlement {
+            Self.keychainUnavailable = true
+            try? FileManager.default.removeItem(at: Self.fileStoreURL(service: service, account: account))
+        }
     }
 
     private func readOnce(service: String, account: String) throws -> Data? {
