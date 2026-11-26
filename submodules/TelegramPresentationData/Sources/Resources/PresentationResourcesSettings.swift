@@ -41,7 +41,11 @@ public func renderSettingsIcon(name: String, scaleFactor: CGFloat = 1.0, backgro
                 context.fill(imageRect)
                 context.restoreGState()
             }
-            
+
+            if mechagramWinterIconsEnabled() {
+                drawMechagramSnowCap(context: context, size: size)
+            }
+
             let outerPath = UIBezierPath(rect: CGRect(origin: .zero, size: size))
             let innerPath = UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 8.0)
             outerPath.append(innerPath)
@@ -66,6 +70,44 @@ public func renderSettingsIcon(name: String, scaleFactor: CGFloat = 1.0, backgro
             }
         }
     })
+}
+
+/// Settings ▸ Appearance ▸ Winter ▸ Winter icons (on by default). Icons are
+/// rendered once per launch, so a change shows after the app restarts.
+public let mechagramWinterIconsKey = "mechagram.winter.icons"
+
+public func mechagramWinterIconsEnabled() -> Bool {
+    return UserDefaults.standard.object(forKey: mechagramWinterIconsKey) as? Bool ?? true
+}
+
+/// A snow cap along the top edge of a 30×30 settings icon. The context has
+/// Core Graphics coordinates (origin at the bottom left), so the top is at
+/// size.height.
+private func drawMechagramSnowCap(context: CGContext, size: CGSize) {
+    let h = size.height
+    let w = size.width
+    func capPath(offsetY: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 0.0, y: h + 1.0))
+        path.addLine(to: CGPoint(x: 0.0, y: h - 5.5 + offsetY))
+        path.addCurve(to: CGPoint(x: w * 0.30, y: h - 6.0 + offsetY), control1: CGPoint(x: w * 0.08, y: h - 8.5 + offsetY), control2: CGPoint(x: w * 0.22, y: h - 8.0 + offsetY))
+        path.addCurve(to: CGPoint(x: w * 0.62, y: h - 6.5 + offsetY), control1: CGPoint(x: w * 0.40, y: h - 3.5 + offsetY), control2: CGPoint(x: w * 0.52, y: h - 9.0 + offsetY))
+        path.addCurve(to: CGPoint(x: w, y: h - 5.0 + offsetY), control1: CGPoint(x: w * 0.74, y: h - 4.0 + offsetY), control2: CGPoint(x: w * 0.90, y: h - 8.0 + offsetY))
+        path.addLine(to: CGPoint(x: w, y: h + 1.0))
+        path.closeSubpath()
+        return path
+    }
+    context.saveGState()
+    context.setBlendMode(.normal)
+    context.setFillColor(UIColor(white: 0.0, alpha: 0.14).cgColor)
+    context.addPath(capPath(offsetY: -1.0))
+    context.fillPath()
+    context.setFillColor(UIColor(white: 1.0, alpha: 0.97).cgColor)
+    context.addPath(capPath(offsetY: 0.0))
+    context.fillPath()
+    context.fillEllipse(in: CGRect(x: w * 0.27 - 1.2, y: h - 9.6, width: 2.4, height: 2.6))
+    context.fillEllipse(in: CGRect(x: w * 0.66 - 1.0, y: h - 10.0, width: 2.0, height: 2.3))
+    context.restoreGState()
 }
 
 public func renderAttachAppIcon(iconImage: UIImage?) -> UIImage? {

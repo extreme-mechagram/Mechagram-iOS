@@ -98,7 +98,13 @@ private enum ThemeSettingsControllerSection: Int32 {
     case icon
     case powerSaving
     case other
+    case winter
 }
+
+// Mechagram winter look. The keys are shared with TelegramPresentationData
+// (icons) and TelegramUI (snow overlay) through UserDefaults.
+private let mechagramWinterSnowKey = "mechagram.winter.snow"
+private let mechagramWinterChangedNotification = Notification.Name("MechagramWinterSettingsChanged")
 
 public enum ThemeSettingsEntryTag: ItemListItemTag {
     case fontSize
@@ -143,7 +149,11 @@ private enum ThemeSettingsControllerEntry: ItemListNodeEntry {
     case sendWithCmdEnter(PresentationTheme, String, Bool)
     case showNextMediaOnTap(PresentationTheme, String, Bool)
     case showNextMediaOnTapInfo(PresentationTheme, String)
-    
+    case winterHeader(PresentationTheme, String)
+    case winterIcons(PresentationTheme, String, Bool)
+    case winterSnow(PresentationTheme, String, Bool)
+    case winterInfo(PresentationTheme, String)
+
     var section: ItemListSectionId {
         switch self {
         case .themeListHeader, .chatPreview, .themes, .chatTheme, .wallpaper, .nameColor:
@@ -158,6 +168,8 @@ private enum ThemeSettingsControllerEntry: ItemListNodeEntry {
                 return ThemeSettingsControllerSection.message.rawValue
             case .otherHeader, .sendWithCmdEnter, .showNextMediaOnTap, .showNextMediaOnTapInfo:
                 return ThemeSettingsControllerSection.other.rawValue
+            case .winterHeader, .winterIcons, .winterSnow, .winterInfo:
+                return ThemeSettingsControllerSection.winter.rawValue
         }
     }
     
@@ -201,6 +213,14 @@ private enum ThemeSettingsControllerEntry: ItemListNodeEntry {
             return 17
         case .showNextMediaOnTapInfo:
             return 18
+        case .winterHeader:
+            return 19
+        case .winterIcons:
+            return 20
+        case .winterSnow:
+            return 21
+        case .winterInfo:
+            return 22
         }
     }
     
@@ -320,6 +340,30 @@ private enum ThemeSettingsControllerEntry: ItemListNodeEntry {
                 } else {
                     return false
                 }
+            case let .winterHeader(lhsTheme, lhsText):
+                if case let .winterHeader(rhsTheme, rhsText) = rhs, lhsTheme === rhsTheme, lhsText == rhsText {
+                    return true
+                } else {
+                    return false
+                }
+            case let .winterIcons(lhsTheme, lhsTitle, lhsValue):
+                if case let .winterIcons(rhsTheme, rhsTitle, rhsValue) = rhs, lhsTheme === rhsTheme, lhsTitle == rhsTitle, lhsValue == rhsValue {
+                    return true
+                } else {
+                    return false
+                }
+            case let .winterSnow(lhsTheme, lhsTitle, lhsValue):
+                if case let .winterSnow(rhsTheme, rhsTitle, rhsValue) = rhs, lhsTheme === rhsTheme, lhsTitle == rhsTitle, lhsValue == rhsValue {
+                    return true
+                } else {
+                    return false
+                }
+            case let .winterInfo(lhsTheme, lhsText):
+                if case let .winterInfo(rhsTheme, rhsText) = rhs, lhsTheme === rhsTheme, lhsText == rhsText {
+                    return true
+                } else {
+                    return false
+                }
         }
     }
     
@@ -409,6 +453,20 @@ private enum ThemeSettingsControllerEntry: ItemListNodeEntry {
                     arguments.toggleShowNextMediaOnTap(value)
                 }, tag: ThemeSettingsEntryTag.tapForNextMedia)
             case let .showNextMediaOnTapInfo(_, text):
+                return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+            case let .winterHeader(_, text):
+                return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+            case let .winterIcons(_, title, value):
+                return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                    UserDefaults.standard.set(value, forKey: mechagramWinterIconsKey)
+                    NotificationCenter.default.post(name: mechagramWinterChangedNotification, object: nil)
+                })
+            case let .winterSnow(_, title, value):
+                return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: title, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                    UserDefaults.standard.set(value, forKey: mechagramWinterSnowKey)
+                    NotificationCenter.default.post(name: mechagramWinterChangedNotification, object: nil)
+                })
+            case let .winterInfo(_, text):
                 return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         }
     }
@@ -517,7 +575,12 @@ private func themeSettingsControllerEntries(
     }
     entries.append(.showNextMediaOnTap(presentationData.theme, strings.Appearance_ShowNextMediaOnTap, mediaSettings.showNextMediaOnTap))
     entries.append(.showNextMediaOnTapInfo(presentationData.theme, strings.Appearance_ShowNextMediaOnTapInfo))
-    
+
+    entries.append(.winterHeader(presentationData.theme, "ЗИМА"))
+    entries.append(.winterIcons(presentationData.theme, "Зимние иконки", mechagramWinterIconsEnabled()))
+    entries.append(.winterSnow(presentationData.theme, "Снег", UserDefaults.standard.bool(forKey: mechagramWinterSnowKey)))
+    entries.append(.winterInfo(presentationData.theme, "Снег идёт поверх всего приложения и не мешает нажатиям. Зимние иконки настроек меняются после перезапуска приложения."))
+
     return entries
 }
 
